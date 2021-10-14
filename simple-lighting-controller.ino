@@ -1,13 +1,35 @@
+#include <Arduino.h>
+#include <FastLED.h>
+
+#define OUT
+
 #define BEAT_BUTTON_PIN D1
 #define BEAT_LED_PIN D5
 
 #define BEAT_TAPS 10
 #define BEAT_TAP_DURATION 5000
 
+#define LIGHT_COUNT 4
+
 uint32_t last_beat = 0;
 uint16_t beat_duration = 500; // 1bps ^= 60bpm
 
 uint32_t last_taps[BEAT_TAPS];
+
+CRGB lights[LIGHT_COUNT];
+CRGB base_color = CRGB::Red;
+
+void crgb_to_rgbwau(CRGB color, OUT uint8_t* r, uint8_t* g, uint8_t* b, uint8_t* w, uint8_t* a, uint8_t* u) {
+  // Default channels
+  *r = color.r;
+  *g = color.g;
+  *b = color.b;
+
+  // Very basic upmix to 6 channels
+  *w = min(color.r, min(color.g, color.b)); // white is set to the same level as the darkest channel
+  *a = min(color.r, color.g); // amber is the mixture of red and green
+  *u = min(color.r, color.b); // uv is activated when blue and red are active
+} 
 
 ICACHE_RAM_ATTR void handle_beat_button() {
   // debounce
