@@ -1,19 +1,29 @@
 #include <Arduino.h>
 #include <FastLED.h>
-#include <ESPDMX.h>
+#include <ESPDMX.h> // https://github.com/Rickgg/ESP-Dmx
 
 #define OUT
 
 #define BEAT_BUTTON_PIN       D1
 #define BEAT_LED_PIN          D5
 
-#define DMX_OUTPUT_PIN        D4
+#define EFFECT_STATIC_PIN     D6
+#define EFFECT_SYNC_PIN       D7
+
+#define BLACKOUT_PIN          D2
+#define BEAT_PAUSE_PIN        D3
+
+#define STROBE_PIN            D0
+
+#define DMX_OUTPUT_PIN        D4 // unchangeable
 #define DMX_UNIVERSE_SIZE     255
 
-#define FRAMES_PER_SECOND     40
+#define FRAMES_PER_SECOND     40 // max 44 fps at full dmx frame
 
 #define BEAT_TAPS             10
 #define BEAT_TAP_DURATION     5000
+
+#define PATTERN_SWITCH_TIME   20000 // 20s
 
 #define LIGHT_COUNT           4
 
@@ -31,22 +41,25 @@
 #define LIGHT_FIRST_CHANNEL   1
 
 uint32_t last_beat = 0;
-uint16_t beat_duration = 500; // 1bps ^= 60bpm
+uint16_t beat_duration = 500; // 2bps ^= 120bpm
+
+bool g_beat_due = false;
 
 uint32_t last_taps[BEAT_TAPS];
 
-uint8_t gDimmer = 255;
-uint8_t gStrobe = 0;
-uint8_t gHue = 0;
+uint8_t g_dimmer = 255;
+uint8_t g_strobe = 0;
+uint8_t g_hue = 0;
+
+uint8_t g_static_effect = false;
+uint8_t g_effect_rotation = true;
+uint8_t g_blackout = false;
+uint8_t g_beat_paused = false;
 
 CRGB lights[LIGHT_COUNT];
 CRGB base_color = CRGB::Red;
 
 DMXESPSerial dmx;
-
-typedef void (*SimplePatternList[])();
-SimplePatternList gPatternsSync = {confetti};
-SimplePatternList gPatternsStatic = {rainbow};
 
 void crgb_to_rgbwau(CRGB color, OUT uint8_t* r, uint8_t* g, uint8_t* b, uint8_t* w, uint8_t* a, uint8_t* u) {
   // Default channels
@@ -67,8 +80,8 @@ void write_dmx_frame(CRGB* lights) {
     uint8_t r, g, b, w, a, u;
     crgb_to_rgbwau(lights[i], &r, &g, &b, &w, &a, &u);
 
-    dmx.write(start_channel + LIGHT_CHANNEL_DIMMER, gDimmer);
-    dmx.write(start_channel + LIGHT_CHANNEL_STROBE, gStrobe);
+    dmx.write(start_channel + LIGHT_CHANNEL_DIMMER, g_dimmer);
+    dmx.write(start_channel + LIGHT_CHANNEL_STROBE, g_strobe);
 
     dmx.write(start_channel + LIGHT_CHANNEL_RED, r);
     dmx.write(start_channel + LIGHT_CHANNEL_GREEN, g);
@@ -79,6 +92,20 @@ void write_dmx_frame(CRGB* lights) {
   }
 
   dmx.update();
+}
+
+void check_button_status() {
+  g_strobe = !digitalRead(STROBE_PIN) * 255;
+  g_blackout = !digitalRead(BLACKOUT_PIN);
+  g_beat_paused = !digitalRead(BEAT_PAUSE_PIN);
+
+  if (!g_effect_rotation && (!digitalRead(EFFECT_STATIC_PIN) || !digitalRead(EFFECT_SYNC_PIN))) {
+    next_pattern();
+
+    g_static_effect = !digitalRead(EFFECT_STATIC_PIN);
+  }
+
+  g_effect_rotation = !(digitalRead(EFFECT_STATIC_PIN) && digitalRead(EFFECT_SYNC_PIN));
 }
 
 ICACHE_RAM_ATTR void handle_beat_button() {
@@ -124,6 +151,12 @@ ICACHE_RAM_ATTR void handle_beat_button() {
 
 void setup() {
   pinMode(BEAT_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(EFFECT_STATIC_PIN, INPUT_PULLUP);
+  pinMode(EFFECT_SYNC_PIN, INPUT_PULLUP);
+  pinMode(BLACKOUT_PIN, INPUT_PULLUP);
+  pinMode(BEAT_PAUSE_PIN, INPUT_PULLUP);
+  pinMode(STROBE_PIN, INPUT_PULLUP);
+
   pinMode(BEAT_LED_PIN, OUTPUT);
 
   attachInterrupt(digitalPinToInterrupt(BEAT_BUTTON_PIN), handle_beat_button, FALLING);
@@ -133,37 +166,106 @@ void setup() {
   dmx.init(DMX_UNIVERSE_SIZE);
 }
 
+typedef void (*SimplePatternList[])();
+SimplePatternList g_patterns_sync = {confetti, sinelon};
+SimplePatternList g_patterns_static = {rainbow, juggle};
+
+uint8_t g_current_sync_pattern = 0;
+uint8_t g_current_static_pattern = 0;
+
+uint32_t g_last_pattern_switch = 0;
+
 void loop() {
   FastLED.delay(1000 / FRAMES_PER_SECOND);
+
+  check_button_status();
+
+  if (g_effect_rotation && millis() > g_last_pattern_switch + PATTERN_SWITCH_TIME) {
+    g_last_pattern_switch = millis();
+    next_pattern();
+  }
 
   EVERY_N_MILLISECONDS(1) {
     // handle beat
     if (millis() > last_beat + beat_duration) { // beat due
       last_beat = millis();
+      
+      g_beat_due = !g_beat_paused;
+
+      // run effect on beat
+      if (!g_static_effect) {
+        g_patterns_sync[g_current_sync_pattern]();
+      }
+
+      g_beat_due = false;
     }    
   }
 
-  gHue += 2;
+  EVERY_N_SECONDS(1) {
+    Serial.print("SYNC Pattern ID: ");
+    Serial.print(g_current_sync_pattern);
+    Serial.print(" STATIC Pattern: ");
+    Serial.print(g_static_effect);
+    Serial.print(" STROBE: ");
+    Serial.print(g_strobe);
+    Serial.print(" EFFECT Rotation on: ");
+    Serial.println(g_effect_rotation);
+  }
 
-  analogWrite(BEAT_LED_PIN, ((beat_duration - (millis() - last_beat)) / (beat_duration * 1.f)) * 255); // fade beat led in sync
+  g_hue += 2;
 
-  confetti();
+  if (g_static_effect) {
+    g_patterns_static[g_current_static_pattern]();
+  } else {
+    g_patterns_sync[g_current_sync_pattern]();
+  }
+  
 
   write_dmx_frame(lights);
+  analogWrite(BEAT_LED_PIN, ((beat_duration - (millis() - last_beat)) / (beat_duration * 1.f)) * 255); // fade beat led in sync
 }
+
+#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
+
+void next_pattern() {
+  // add one to the current pattern number, and wrap around at the end
+  g_current_sync_pattern = (g_current_sync_pattern + 1) % ARRAY_SIZE( g_patterns_sync);
+  g_current_static_pattern = (g_current_static_pattern + 1) % ARRAY_SIZE( g_patterns_static);
+
+  Serial.println("NEXT Pattern!");
+}
+
+// EFFECT SECTION //
 
 void rainbow() {
-  fill_rainbow(lights, LIGHT_COUNT, gHue, 15);
+  fill_rainbow(lights, LIGHT_COUNT, g_hue, 15);
 }
 
-void confetti(bool beat) {
+void confetti() {
   // random colored speckles that blink in and fade smoothly
 
-  if (beat) {
+  if (g_beat_due) {
     int pos = random16(LIGHT_COUNT);
-    lights[pos] += CHSV( gHue + random8(64), 255, 255);
+    lights[pos] += CHSV( g_hue + random8(64), 255, 255);
     return;
   }
 
   fadeToBlackBy(lights, LIGHT_COUNT, 10);
+}
+
+void sinelon() {
+  // a colored dot sweeping back and forth, with fading trails
+  fadeToBlackBy(lights, LIGHT_COUNT, 20);
+  int pos = beatsin16( (60000 / beat_duration) / 4, 0, LIGHT_COUNT-1 );
+  lights[pos] += CHSV( g_hue, 255, 192);
+}
+
+void juggle() {
+  // two colored dots, weaving in and out of sync with each other
+  fadeToBlackBy( lights, LIGHT_COUNT, 20);
+  byte dothue = 0;
+  for( int i = 0; i < 2; i++) {
+    lights[beatsin16( i+7, 0, LIGHT_COUNT-1 )] |= CHSV(dothue, 200, 255);
+    dothue += 32;
+  }
 }
