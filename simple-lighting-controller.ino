@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <FastLED.h>
-#include <DmxSimple.h>
+#include <ESPDMX.h>
 
 #define OUT
 
@@ -8,7 +8,9 @@
 #define BEAT_LED_PIN          D5
 
 #define DMX_OUTPUT_PIN        D4
-#define DMX_UNIVERSE_SIZE     64
+#define DMX_UNIVERSE_SIZE     255
+
+#define FRAMES_PER_SECOND     40
 
 #define BEAT_TAPS             10
 #define BEAT_TAP_DURATION     5000
@@ -33,11 +35,18 @@ uint16_t beat_duration = 500; // 1bps ^= 60bpm
 
 uint32_t last_taps[BEAT_TAPS];
 
-uint8_t brightness = 255;
-uint8_t strobe = 0;
+uint8_t gDimmer = 255;
+uint8_t gStrobe = 0;
+uint8_t gHue = 0;
 
 CRGB lights[LIGHT_COUNT];
 CRGB base_color = CRGB::Red;
+
+DMXESPSerial dmx;
+
+typedef void (*SimplePatternList[])();
+SimplePatternList gPatternsSync = {confetti};
+SimplePatternList gPatternsStatic = {rainbow};
 
 void crgb_to_rgbwau(CRGB color, OUT uint8_t* r, uint8_t* g, uint8_t* b, uint8_t* w, uint8_t* a, uint8_t* u) {
   // Default channels
@@ -52,22 +61,24 @@ void crgb_to_rgbwau(CRGB color, OUT uint8_t* r, uint8_t* g, uint8_t* b, uint8_t*
 } 
 
 void write_dmx_frame(CRGB* lights) {
-  for (uint8_t i = 0; i < sizeof(lights); i ++) {
+  for (uint8_t i = 0; i < LIGHT_COUNT; i ++) {
     uint8_t start_channel = (i * LIGHT_CHANNEL_SPACING) + LIGHT_FIRST_CHANNEL;
 
     uint8_t r, g, b, w, a, u;
     crgb_to_rgbwau(lights[i], &r, &g, &b, &w, &a, &u);
 
-    DmxSimple.write(start_channel + LIGHT_CHANNEL_DIMMER, brightness);
-    DmxSimple.write(start_channel + LIGHT_CHANNEL_STROBE, strobe);
+    dmx.write(start_channel + LIGHT_CHANNEL_DIMMER, gDimmer);
+    dmx.write(start_channel + LIGHT_CHANNEL_STROBE, gStrobe);
 
-    DmxSimple.write(start_channel + LIGHT_CHANNEL_RED, r);
-    DmxSimple.write(start_channel + LIGHT_CHANNEL_GREEN, g);
-    DmxSimple.write(start_channel + LIGHT_CHANNEL_BLUE, b);
-    DmxSimple.write(start_channel + LIGHT_CHANNEL_WHITE, w);
-    DmxSimple.write(start_channel + LIGHT_CHANNEL_AMBER, a);
-    DmxSimple.write(start_channel + LIGHT_CHANNEL_UV, u);
+    dmx.write(start_channel + LIGHT_CHANNEL_RED, r);
+    dmx.write(start_channel + LIGHT_CHANNEL_GREEN, g);
+    dmx.write(start_channel + LIGHT_CHANNEL_BLUE, b);
+    dmx.write(start_channel + LIGHT_CHANNEL_WHITE, w);
+    dmx.write(start_channel + LIGHT_CHANNEL_AMBER, a);
+    dmx.write(start_channel + LIGHT_CHANNEL_UV, u);
   }
+
+  dmx.update();
 }
 
 ICACHE_RAM_ATTR void handle_beat_button() {
@@ -119,15 +130,40 @@ void setup() {
 
   Serial.begin(115200);
 
-  DmxSimple.usePin(DMX_OUTPUT_PIN);
-  DmxSimple.maxChannel(DMX_UNIVERSE_SIZE);
+  dmx.init(DMX_UNIVERSE_SIZE);
 }
 
 void loop() {
-  // handle beat
-  if (millis() > last_beat + beat_duration) { // beat due
-    last_beat = millis();
+  FastLED.delay(1000 / FRAMES_PER_SECOND);
+
+  EVERY_N_MILLISECONDS(1) {
+    // handle beat
+    if (millis() > last_beat + beat_duration) { // beat due
+      last_beat = millis();
+    }    
   }
 
+  gHue += 2;
+
   analogWrite(BEAT_LED_PIN, ((beat_duration - (millis() - last_beat)) / (beat_duration * 1.f)) * 255); // fade beat led in sync
+
+  confetti();
+
+  write_dmx_frame(lights);
+}
+
+void rainbow() {
+  fill_rainbow(lights, LIGHT_COUNT, gHue, 15);
+}
+
+void confetti(bool beat) {
+  // random colored speckles that blink in and fade smoothly
+
+  if (beat) {
+    int pos = random16(LIGHT_COUNT);
+    lights[pos] += CHSV( gHue + random8(64), 255, 255);
+    return;
+  }
+
+  fadeToBlackBy(lights, LIGHT_COUNT, 10);
 }
