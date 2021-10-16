@@ -15,8 +15,12 @@
 
 #define STROBE_PIN            D0
 
+#define DIMMER_PIN            A0
+
 #define DMX_OUTPUT_PIN        D4 // unchangeable
 #define DMX_UNIVERSE_SIZE     255
+
+#define STROBE_SPEED          128
 
 #define FRAMES_PER_SECOND     40 // max 44 fps at full dmx frame
 
@@ -80,22 +84,22 @@ void write_dmx_frame(CRGB* lights) {
     uint8_t r, g, b, w, a, u;
     crgb_to_rgbwau(lights[i], &r, &g, &b, &w, &a, &u);
 
-    dmx.write(start_channel + LIGHT_CHANNEL_DIMMER, g_dimmer);
+    dmx.write(start_channel + LIGHT_CHANNEL_DIMMER, (g_blackout) ? 0 : g_dimmer);
     dmx.write(start_channel + LIGHT_CHANNEL_STROBE, g_strobe);
 
-    dmx.write(start_channel + LIGHT_CHANNEL_RED, r);
-    dmx.write(start_channel + LIGHT_CHANNEL_GREEN, g);
-    dmx.write(start_channel + LIGHT_CHANNEL_BLUE, b);
-    dmx.write(start_channel + LIGHT_CHANNEL_WHITE, w);
-    dmx.write(start_channel + LIGHT_CHANNEL_AMBER, a);
-    dmx.write(start_channel + LIGHT_CHANNEL_UV, u);
+    dmx.write(start_channel + LIGHT_CHANNEL_RED, (g_strobe) ? g_dimmer : r);
+    dmx.write(start_channel + LIGHT_CHANNEL_GREEN, (g_strobe) ? g_dimmer : g);
+    dmx.write(start_channel + LIGHT_CHANNEL_BLUE, (g_strobe) ? g_dimmer : b);
+    dmx.write(start_channel + LIGHT_CHANNEL_WHITE, (g_strobe) ? g_dimmer : w);
+    dmx.write(start_channel + LIGHT_CHANNEL_AMBER, (g_strobe) ? g_dimmer : a);
+    dmx.write(start_channel + LIGHT_CHANNEL_UV, (g_strobe) ? g_dimmer : u);
   }
 
   dmx.update();
 }
 
 void check_button_status() {
-  g_strobe = !digitalRead(STROBE_PIN) * 255;
+  g_strobe = !digitalRead(STROBE_PIN) * STROBE_SPEED;
   g_blackout = !digitalRead(BLACKOUT_PIN);
   g_beat_paused = !digitalRead(BEAT_PAUSE_PIN);
 
@@ -106,6 +110,8 @@ void check_button_status() {
   }
 
   g_effect_rotation = !(digitalRead(EFFECT_STATIC_PIN) && digitalRead(EFFECT_SYNC_PIN));
+
+  g_dimmer = map(analogRead(DIMMER_PIN), 10, 1024, 0, 255);
 }
 
 ICACHE_RAM_ATTR void handle_beat_button() {
@@ -159,6 +165,8 @@ void setup() {
 
   pinMode(BEAT_LED_PIN, OUTPUT);
 
+  pinMode(DIMMER_PIN, INPUT);
+
   attachInterrupt(digitalPinToInterrupt(BEAT_BUTTON_PIN), handle_beat_button, FALLING);
 
   Serial.begin(115200);
@@ -208,6 +216,12 @@ void loop() {
     Serial.print(g_static_effect);
     Serial.print(" STROBE: ");
     Serial.print(g_strobe);
+    Serial.print(" BEAT Paused: ");
+    Serial.print(g_beat_paused);
+    Serial.print(" BLACKOUT: ");
+    Serial.print(g_blackout);
+    Serial.print(" DIMMER: ");
+    Serial.print(g_dimmer);
     Serial.print(" EFFECT Rotation on: ");
     Serial.println(g_effect_rotation);
   }
