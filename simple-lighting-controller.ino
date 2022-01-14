@@ -2,6 +2,9 @@
 #include <FastLED.h>
 #include <ESPDMX.h> // https://github.com/Rickgg/ESP-Dmx
 
+#include <ESP8266WiFi.h>
+#include <espnow.h>
+
 #define OUT
 
 #define BEAT_BUTTON_PIN       D1
@@ -65,6 +68,10 @@ CRGB base_color = CRGB::Red;
 
 DMXESPSerial dmx;
 
+uint8_t broadcast_address[] = {0xD8, 0xBF, 0xC0, 0x14, 0x75, 0x72};
+uint8_t dmx_buffer[255];
+
+
 void crgb_to_rgbwau(CRGB color, OUT uint8_t* r, uint8_t* g, uint8_t* b, uint8_t* w, uint8_t* a, uint8_t* u) {
   // Default channels
   *r = color.r;
@@ -84,18 +91,29 @@ void write_dmx_frame(CRGB* lights) {
     uint8_t r, g, b, w, a, u;
     crgb_to_rgbwau(lights[i], &r, &g, &b, &w, &a, &u);
 
-    dmx.write(start_channel + LIGHT_CHANNEL_DIMMER, (g_blackout) ? 0 : g_dimmer);
-    dmx.write(start_channel + LIGHT_CHANNEL_STROBE, g_strobe);
+    setDmx(start_channel + LIGHT_CHANNEL_DIMMER, (g_blackout) ? 0 : g_dimmer);
+    setDmx(start_channel + LIGHT_CHANNEL_STROBE, g_strobe);
 
-    dmx.write(start_channel + LIGHT_CHANNEL_RED, (g_strobe) ? g_dimmer : r);
-    dmx.write(start_channel + LIGHT_CHANNEL_GREEN, (g_strobe) ? g_dimmer : g);
-    dmx.write(start_channel + LIGHT_CHANNEL_BLUE, (g_strobe) ? g_dimmer : b);
-    dmx.write(start_channel + LIGHT_CHANNEL_WHITE, (g_strobe) ? g_dimmer : w);
-    dmx.write(start_channel + LIGHT_CHANNEL_AMBER, (g_strobe) ? g_dimmer : a);
-    dmx.write(start_channel + LIGHT_CHANNEL_UV, (g_strobe) ? g_dimmer : u);
+    setDmx(start_channel + LIGHT_CHANNEL_RED, (g_strobe) ? g_dimmer : r);
+    setDmx(start_channel + LIGHT_CHANNEL_GREEN, (g_strobe) ? g_dimmer : g);
+    setDmx(start_channel + LIGHT_CHANNEL_BLUE, (g_strobe) ? g_dimmer : b);
+    setDmx(start_channel + LIGHT_CHANNEL_WHITE, (g_strobe) ? g_dimmer : w);
+    setDmx(start_channel + LIGHT_CHANNEL_AMBER, (g_strobe) ? g_dimmer : a);
+    setDmx(start_channel + LIGHT_CHANNEL_UV, (g_strobe) ? g_dimmer : u);
   }
 
+  sendDmx();
+}
+
+void setDmx(uint8_t channel, uint8_t value) {
+  dmx.write(channel, value);
+  dmx_buffer[channel - 1] = value;
+}
+
+void sendDmx() {
   dmx.update();
+
+  esp_now_send(broadcast_address, dmx_buffer, 128);
 }
 
 void check_button_status() {
@@ -170,6 +188,15 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(BEAT_BUTTON_PIN), handle_beat_button, FALLING);
 
   Serial.begin(115200);
+
+  WiFi.mode(WIFI_STA);
+  if (!esp_now_init()) {
+    Serial.println("Error initializing ESP-NOW");
+  }
+
+  esp_now_set_self_role(ESP_NOW_ROLE_CONTROLLER);
+  esp_now_add_peer(broadcast_address, ESP_NOW_ROLE_SLAVE, 1, NULL, 0);
+
 
   dmx.init(DMX_UNIVERSE_SIZE);
 }
