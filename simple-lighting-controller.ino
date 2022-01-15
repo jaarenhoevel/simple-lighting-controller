@@ -32,7 +32,7 @@
 
 #define PATTERN_SWITCH_TIME   20000 // 20s
 
-#define LIGHT_COUNT           4
+#define LIGHT_COUNT           10
 
 #define LIGHT_CHANNEL_DIMMER  0
 #define LIGHT_CHANNEL_STROBE  7
@@ -46,6 +46,8 @@
 
 #define LIGHT_CHANNEL_SPACING 10
 #define LIGHT_FIRST_CHANNEL   1
+
+#define LIGHT_LAST_CHANNEL    (LIGHT_COUNT * LIGHT_CHANNEL_SPACING) + LIGHT_FIRST_CHANNEL + LIGHT_CHANNEL_STROBE
 
 uint32_t last_beat = 0;
 uint16_t beat_duration = 500; // 2bps ^= 120bpm
@@ -68,8 +70,9 @@ CRGB base_color = CRGB::Red;
 
 DMXESPSerial dmx;
 
-uint8_t broadcast_address[] = {0xD8, 0xBF, 0xC0, 0x14, 0x75, 0x72};
-uint8_t dmx_buffer[255];
+uint8_t broadcast_address[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+//uint8_t broadcast_address[] = {0xD8, 0xBF, 0xC0, 0x14, 0x75, 0x72};
+uint8_t dmx_buffer[LIGHT_LAST_CHANNEL];
 
 
 void crgb_to_rgbwau(CRGB color, OUT uint8_t* r, uint8_t* g, uint8_t* b, uint8_t* w, uint8_t* a, uint8_t* u) {
@@ -112,8 +115,7 @@ void setDmx(uint8_t channel, uint8_t value) {
 
 void sendDmx() {
   dmx.update();
-
-  esp_now_send(broadcast_address, dmx_buffer, 128);
+  esp_now_send(broadcast_address, dmx_buffer, sizeof(dmx_buffer));
 }
 
 void check_button_status() {
@@ -129,7 +131,11 @@ void check_button_status() {
 
   g_effect_rotation = !(digitalRead(EFFECT_STATIC_PIN) && digitalRead(EFFECT_SYNC_PIN));
 
-  g_dimmer = map(analogRead(DIMMER_PIN), 10, 1024, 0, 255);
+  if (analogRead(DIMMER_PIN) < 10) {
+    g_dimmer = 0;    
+  } else {
+    g_dimmer = map(analogRead(DIMMER_PIN), 10, 1024, 0, 255);    
+  }
 }
 
 ICACHE_RAM_ATTR void handle_beat_button() {
@@ -189,14 +195,18 @@ void setup() {
 
   Serial.begin(115200);
 
+  Serial.println();
+  Serial.print("MAC-Address: ");
+  Serial.println(WiFi.macAddress());
+
   WiFi.mode(WIFI_STA);
-  if (!esp_now_init()) {
+  if (esp_now_init() != 0) {
     Serial.println("Error initializing ESP-NOW");
+    while (1);
   }
 
   esp_now_set_self_role(ESP_NOW_ROLE_CONTROLLER);
   esp_now_add_peer(broadcast_address, ESP_NOW_ROLE_SLAVE, 1, NULL, 0);
-
 
   dmx.init(DMX_UNIVERSE_SIZE);
 }
