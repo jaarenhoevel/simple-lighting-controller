@@ -233,7 +233,7 @@ void loop() {
   EVERY_N_MILLISECONDS(1) {
     // handle beat
     if (millis() > last_beat + beat_duration) { // beat due
-      last_beat = millis();
+      last_beat += beat_duration;
       
       g_beat_due = !g_beat_paused;
 
