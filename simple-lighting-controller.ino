@@ -23,16 +23,16 @@
 #define DMX_OUTPUT_PIN        D4 // unchangeable
 #define DMX_UNIVERSE_SIZE     255
 
-#define STROBE_SPEED          128
+#define STROBE_SPEED          250
 
-#define FRAMES_PER_SECOND     40 // max 44 fps at full dmx frame
+#define FRAMES_PER_SECOND     30 // max 44 fps at full dmx frame
 
 #define BEAT_TAPS             10
 #define BEAT_TAP_DURATION     5000
 
-#define PATTERN_SWITCH_TIME   20000 // 20s
+#define PATTERN_SWITCH_TIME   30000 // 20s
 
-#define LIGHT_COUNT           10
+#define LIGHT_COUNT           2
 
 #define LIGHT_CHANNEL_DIMMER  0
 #define LIGHT_CHANNEL_STROBE  7
@@ -72,7 +72,7 @@ DMXESPSerial dmx;
 
 uint8_t broadcast_address[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 //uint8_t broadcast_address[] = {0xD8, 0xBF, 0xC0, 0x14, 0x75, 0x72};
-uint8_t dmx_buffer[LIGHT_LAST_CHANNEL];
+uint8_t dmx_buffer[LIGHT_LAST_CHANNEL + 1];
 
 
 void crgb_to_rgbwau(CRGB color, OUT uint8_t* r, uint8_t* g, uint8_t* b, uint8_t* w, uint8_t* a, uint8_t* u) {
@@ -94,15 +94,15 @@ void write_dmx_frame(CRGB* lights) {
     uint8_t r, g, b, w, a, u;
     crgb_to_rgbwau(lights[i], &r, &g, &b, &w, &a, &u);
 
-    setDmx(start_channel + LIGHT_CHANNEL_DIMMER, (g_blackout) ? 0 : g_dimmer);
+    setDmx(start_channel + LIGHT_CHANNEL_DIMMER, (g_blackout) ? 0 : ((g_strobe) ? 255 : g_dimmer));
     setDmx(start_channel + LIGHT_CHANNEL_STROBE, g_strobe);
 
-    setDmx(start_channel + LIGHT_CHANNEL_RED, (g_strobe) ? g_dimmer : r);
-    setDmx(start_channel + LIGHT_CHANNEL_GREEN, (g_strobe) ? g_dimmer : g);
-    setDmx(start_channel + LIGHT_CHANNEL_BLUE, (g_strobe) ? g_dimmer : b);
-    setDmx(start_channel + LIGHT_CHANNEL_WHITE, (g_strobe) ? g_dimmer : w);
-    setDmx(start_channel + LIGHT_CHANNEL_AMBER, (g_strobe) ? g_dimmer : a);
-    setDmx(start_channel + LIGHT_CHANNEL_UV, (g_strobe) ? g_dimmer : u);
+    setDmx(start_channel + LIGHT_CHANNEL_RED, (g_strobe) ? 255 : r);
+    setDmx(start_channel + LIGHT_CHANNEL_GREEN, (g_strobe) ? 255 : g);
+    setDmx(start_channel + LIGHT_CHANNEL_BLUE, (g_strobe) ? 255 : b);
+    setDmx(start_channel + LIGHT_CHANNEL_WHITE, (g_strobe) ? 255 : w);
+    setDmx(start_channel + LIGHT_CHANNEL_AMBER, (g_strobe) ? 255 : a);
+    setDmx(start_channel + LIGHT_CHANNEL_UV, (g_strobe) ? 255 : u);
   }
 
   sendDmx();
@@ -110,7 +110,7 @@ void write_dmx_frame(CRGB* lights) {
 
 void setDmx(uint8_t channel, uint8_t value) {
   dmx.write(channel, value);
-  dmx_buffer[channel - 1] = value;
+  dmx_buffer[channel] = value;
 }
 
 void sendDmx() {
