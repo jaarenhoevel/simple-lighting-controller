@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <FastLED.h>
-#include <ESPDMX.h> // https://github.com/Rickgg/ESP-Dmx
+#include <ESPDMX.h>
 
 #include <ESP8266WiFi.h>
 #include <espnow.h>
@@ -48,6 +48,8 @@
 #define LIGHT_FIRST_CHANNEL   1
 
 #define LIGHT_LAST_CHANNEL    (LIGHT_COUNT * LIGHT_CHANNEL_SPACING) + LIGHT_FIRST_CHANNEL + LIGHT_CHANNEL_STROBE
+#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
+
 
 uint32_t last_beat = 0;
 uint16_t beat_duration = 500; // 2bps ^= 120bpm
@@ -74,6 +76,28 @@ uint8_t broadcast_address[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 //uint8_t broadcast_address[] = {0xD8, 0xBF, 0xC0, 0x14, 0x75, 0x72};
 uint8_t dmx_buffer[LIGHT_LAST_CHANNEL + 1];
 
+void juggle();
+void rainbow();
+void sinelon();
+void confetti();
+
+typedef void (*SimplePatternList[])();
+SimplePatternList g_patterns_sync = {confetti, sinelon};
+SimplePatternList g_patterns_static = {rainbow, juggle};
+
+uint8_t g_current_sync_pattern = 0;
+uint8_t g_current_static_pattern = 0;
+
+uint32_t g_last_pattern_switch = 0;
+
+
+void next_pattern() {
+  // add one to the current pattern number, and wrap around at the end
+  g_current_sync_pattern = (g_current_sync_pattern + 1) % ARRAY_SIZE( g_patterns_sync);
+  g_current_static_pattern = (g_current_static_pattern + 1) % ARRAY_SIZE( g_patterns_static);
+
+  Serial.println("NEXT Pattern!");
+}
 
 void crgb_to_rgbwau(CRGB color, OUT uint8_t* r, uint8_t* g, uint8_t* b, uint8_t* w, uint8_t* a, uint8_t* u) {
   // Default channels
@@ -86,6 +110,16 @@ void crgb_to_rgbwau(CRGB color, OUT uint8_t* r, uint8_t* g, uint8_t* b, uint8_t*
   *a = min(color.r, color.g); // amber is the mixture of red and green
   *u = min(color.r, color.b); // uv is activated when blue and red are active
 } 
+
+void setDmx(uint8_t channel, uint8_t value) {
+  dmx.write(channel, value);
+  dmx_buffer[channel] = value;
+}
+
+void sendDmx() {
+  dmx.update();
+  esp_now_send(broadcast_address, dmx_buffer, sizeof(dmx_buffer));
+}
 
 void write_dmx_frame(CRGB* lights) {
   for (uint8_t i = 0; i < LIGHT_COUNT; i ++) {
@@ -106,16 +140,6 @@ void write_dmx_frame(CRGB* lights) {
   }
 
   sendDmx();
-}
-
-void setDmx(uint8_t channel, uint8_t value) {
-  dmx.write(channel, value);
-  dmx_buffer[channel] = value;
-}
-
-void sendDmx() {
-  dmx.update();
-  esp_now_send(broadcast_address, dmx_buffer, sizeof(dmx_buffer));
 }
 
 void check_button_status() {
@@ -211,15 +235,6 @@ void setup() {
   dmx.init(DMX_UNIVERSE_SIZE);
 }
 
-typedef void (*SimplePatternList[])();
-SimplePatternList g_patterns_sync = {confetti, sinelon};
-SimplePatternList g_patterns_static = {rainbow, juggle};
-
-uint8_t g_current_sync_pattern = 0;
-uint8_t g_current_static_pattern = 0;
-
-uint32_t g_last_pattern_switch = 0;
-
 void loop() {
   FastLED.delay(1000 / FRAMES_PER_SECOND);
 
@@ -274,16 +289,6 @@ void loop() {
 
   write_dmx_frame(lights);
   analogWrite(BEAT_LED_PIN, ((beat_duration - (millis() - last_beat)) / (beat_duration * 1.f)) * 255); // fade beat led in sync
-}
-
-#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
-
-void next_pattern() {
-  // add one to the current pattern number, and wrap around at the end
-  g_current_sync_pattern = (g_current_sync_pattern + 1) % ARRAY_SIZE( g_patterns_sync);
-  g_current_static_pattern = (g_current_static_pattern + 1) % ARRAY_SIZE( g_patterns_static);
-
-  Serial.println("NEXT Pattern!");
 }
 
 // EFFECT SECTION //
