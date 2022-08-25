@@ -16,6 +16,8 @@
 #define BLACKOUT_PIN          D2
 #define BEAT_PAUSE_PIN        D3
 
+#define UV_DURING_BEAT_PAUSE  true
+
 #define STROBE_PIN            D0
 
 #define DIMMER_PIN            A0
@@ -145,6 +147,18 @@ void write_dmx_frame(CRGB* lights) {
     setDmx(start_channel + LIGHT_CHANNEL_WHITE, (g_strobe) ? 255 : w);
     setDmx(start_channel + LIGHT_CHANNEL_AMBER, (g_strobe) ? 255 : a);
     setDmx(start_channel + LIGHT_CHANNEL_UV, (g_strobe) ? 255 : u);
+
+    if (UV_DURING_BEAT_PAUSE && g_beat_paused) {
+      setDmx(start_channel + LIGHT_CHANNEL_DIMMER, (g_strobe) ? 255 : g_dimmer);
+      setDmx(start_channel + LIGHT_CHANNEL_STROBE, g_strobe);
+
+      setDmx(start_channel + LIGHT_CHANNEL_RED, 0);
+      setDmx(start_channel + LIGHT_CHANNEL_GREEN, 0);
+      setDmx(start_channel + LIGHT_CHANNEL_BLUE, 0);
+      setDmx(start_channel + LIGHT_CHANNEL_WHITE, 0);
+      setDmx(start_channel + LIGHT_CHANNEL_AMBER, 0);
+      setDmx(start_channel + LIGHT_CHANNEL_UV, 255);
+    }
   }
 
   sendDmx();
