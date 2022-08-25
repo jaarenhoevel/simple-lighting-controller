@@ -32,7 +32,7 @@
 
 #define PATTERN_SWITCH_TIME   30000 // 20s
 
-#define LIGHT_COUNT           4
+#define LIGHT_COUNT           2
 
 #define LIGHT_CHANNEL_DIMMER  0
 #define LIGHT_CHANNEL_STROBE  7
@@ -81,9 +81,10 @@ void juggle();
 void rainbow();
 void sinelon();
 void confetti();
+void chase();
 
 typedef void (*SimplePatternList[])();
-SimplePatternList g_patterns_sync = {confetti, sinelon};
+SimplePatternList g_patterns_sync = {confetti, sinelon, chase};
 SimplePatternList g_patterns_static = {rainbow, juggle};
 
 uint8_t g_current_sync_pattern = 0;
@@ -91,11 +92,15 @@ uint8_t g_current_static_pattern = 0;
 
 uint32_t g_last_pattern_switch = 0;
 
+uint32_t g_effect_var_a, g_effect_var_b, g_effect_var_c = 0;
+
 
 void next_pattern() {
   // add one to the current pattern number, and wrap around at the end
   g_current_sync_pattern = (g_current_sync_pattern + 1) % ARRAY_SIZE( g_patterns_sync);
   g_current_static_pattern = (g_current_static_pattern + 1) % ARRAY_SIZE( g_patterns_static);
+
+  g_effect_var_a, g_effect_var_b, g_effect_var_c = 0; // Reset effect vars
 
   Serial.println("NEXT Pattern!");
 }
@@ -329,4 +334,15 @@ void juggle() {
     lights[beatsin16( i+7, 0, LIGHT_COUNT-1 )] |= CHSV(dothue, 200, 255);
     dothue += 32;
   }
+}
+
+void chase() {
+  if (g_beat_due) {
+    lights[g_effect_var_a] += CHSV( g_hue, 255, 255);
+    g_effect_var_a ++;
+    if (g_effect_var_a >= LIGHT_COUNT) g_effect_var_a = 0;
+    return;
+  }
+  
+  fadeToBlackBy(lights, LIGHT_COUNT, 10);  
 }
