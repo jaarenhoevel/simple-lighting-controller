@@ -100,7 +100,9 @@ void next_pattern() {
   g_current_sync_pattern = (g_current_sync_pattern + 1) % ARRAY_SIZE( g_patterns_sync);
   g_current_static_pattern = (g_current_static_pattern + 1) % ARRAY_SIZE( g_patterns_static);
 
-  g_effect_var_a, g_effect_var_b, g_effect_var_c = 0; // Reset effect vars
+  g_effect_var_a = 0; // Reset effect vars
+  g_effect_var_b = 0; // Reset effect vars
+  g_effect_var_c = 0; // Reset effect vars
 
   Serial.println("NEXT Pattern!");
 }
