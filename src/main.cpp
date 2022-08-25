@@ -32,7 +32,7 @@
 
 #define PATTERN_SWITCH_TIME   30000 // 20s
 
-#define LIGHT_COUNT           2
+#define LIGHT_COUNT           4
 
 #define LIGHT_CHANNEL_DIMMER  0
 #define LIGHT_CHANNEL_STROBE  7
@@ -53,6 +53,7 @@
 
 uint32_t last_beat = 0;
 uint16_t beat_duration = 500; // 2bps ^= 120bpm
+accum88 g_bpm = (uint16_t) ((30000.f / beat_duration) * 256.f);
 
 bool g_beat_due = false;
 
@@ -199,6 +200,10 @@ ICACHE_RAM_ATTR void handle_beat_button() {
     Serial.print(beat_duration);
     Serial.print(" Considered Taps: ");
     Serial.println(taps_to_consider);
+
+    Serial.printf("BPM: %f\n", 60000.f / beat_duration);
+
+    g_bpm = (uint16_t) ((30000.f / beat_duration) * 256.f); // Yeaaaaah
   }
 }
 
@@ -312,7 +317,7 @@ void confetti() {
 void sinelon() {
   // a colored dot sweeping back and forth, with fading trails
   fadeToBlackBy(lights, LIGHT_COUNT, 20);
-  int pos = beatsin16( (60000 / beat_duration) / 4, 0, LIGHT_COUNT-1 );
+  int pos = beatsin16( g_bpm, 0, LIGHT_COUNT-1 );
   lights[pos] += CHSV( g_hue, 255, 192);
 }
 
