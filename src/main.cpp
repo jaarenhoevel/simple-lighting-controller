@@ -18,6 +18,8 @@
 
 #define UV_DURING_BEAT_PAUSE  true
 
+#define ESP_NOW_ENABLED       false
+
 #define STROBE_PIN            D0
 
 #define DIMMER_PIN            A0
@@ -34,7 +36,7 @@
 
 #define PATTERN_SWITCH_TIME   30000 // 20s
 
-#define LIGHT_COUNT           2
+#define LIGHT_COUNT           4
 
 #define LIGHT_CHANNEL_DIMMER  0
 #define LIGHT_CHANNEL_STROBE  7
@@ -84,9 +86,10 @@ void rainbow();
 void sinelon();
 void confetti();
 void chase();
+void blinder();
 
 typedef void (*SimplePatternList[])();
-SimplePatternList g_patterns_sync = {confetti, sinelon, chase};
+SimplePatternList g_patterns_sync = {confetti, sinelon, chase, blinder};
 SimplePatternList g_patterns_static = {rainbow, juggle};
 
 uint8_t g_current_sync_pattern = 0;
@@ -128,7 +131,7 @@ void setDmx(uint8_t channel, uint8_t value) {
 
 void sendDmx() {
   dmx.update();
-  esp_now_send(broadcast_address, dmx_buffer, sizeof(dmx_buffer));
+  if (ESP_NOW_ENABLED) esp_now_send(broadcast_address, dmx_buffer, sizeof(dmx_buffer));
 }
 
 void write_dmx_frame(CRGB* lights) {
@@ -361,4 +364,16 @@ void chase() {
   }
   
   fadeToBlackBy(lights, LIGHT_COUNT, 10);  
+}
+
+void blinder() {
+  if (g_beat_due) {
+    for (uint8_t i = 0; i < LIGHT_COUNT; i++) {
+      if (i % 2 == g_effect_var_a) lights[i] = ColorTemperature::Candle;
+    }
+    g_effect_var_a = (g_effect_var_a == 0) ? 1 : 0;
+    return;
+  }
+  
+  fadeUsingColor(lights, LIGHT_COUNT, CRGB(220, 200, 200));
 }
