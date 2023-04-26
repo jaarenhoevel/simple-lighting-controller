@@ -18,7 +18,7 @@
 
 #define UV_DURING_BEAT_PAUSE  true
 
-#define ESP_NOW_ENABLED       false
+#define ESP_NOW_ENABLED       true
 
 #define STROBE_PIN            D0
 
@@ -87,9 +87,10 @@ void sinelon();
 void confetti();
 void chase();
 void blinder();
+void wave();
 
 typedef void (*SimplePatternList[])();
-SimplePatternList g_patterns_sync = {confetti, sinelon, chase, blinder};
+SimplePatternList g_patterns_sync = {confetti, sinelon, chase, blinder, wave};
 SimplePatternList g_patterns_static = {rainbow, juggle};
 
 uint8_t g_current_sync_pattern = 0;
@@ -101,6 +102,9 @@ uint32_t g_effect_var_a, g_effect_var_b, g_effect_var_c = 0;
 
 
 void next_pattern() {
+  // New random color...
+  base_color = CHSV(random8(255), 255, 255);
+  
   // add one to the current pattern number, and wrap around at the end
   g_current_sync_pattern = (g_current_sync_pattern + 1) % ARRAY_SIZE( g_patterns_sync);
   g_current_static_pattern = (g_current_static_pattern + 1) % ARRAY_SIZE( g_patterns_static);
@@ -341,7 +345,7 @@ void confetti() {
 void sinelon() {
   // a colored dot sweeping back and forth, with fading trails
   fadeToBlackBy(lights, LIGHT_COUNT, 20);
-  int pos = beatsin16( g_bpm, 0, LIGHT_COUNT-1 );
+  int pos = beatsin16( g_bpm, 0, LIGHT_COUNT-1, last_taps[0] );
   lights[pos] += CHSV( g_hue, 255, 192);
 }
 
@@ -376,4 +380,11 @@ void blinder() {
   }
   
   fadeUsingColor(lights, LIGHT_COUNT, CRGB(220, 200, 200));
+}
+
+void wave() {
+  for (uint8_t i = 0; i < LIGHT_COUNT; i ++ ) {
+    CRGB color = base_color;
+    lights[i] = color.fadeToBlackBy(beatsin8(g_bpm, 0, 255, last_taps[0], (255 / (LIGHT_COUNT + 1)) * i));
+  }
 }
