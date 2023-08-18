@@ -18,7 +18,7 @@
 
 #define UV_DURING_BEAT_PAUSE  true
 
-#define ESP_NOW_ENABLED       true
+#define ESP_NOW_ENABLED       false
 
 #define STROBE_PIN            D0
 
@@ -34,12 +34,13 @@
 #define BEAT_TAPS             10
 #define BEAT_TAP_DURATION     5000
 
-#define PATTERN_SWITCH_TIME   30000 // 20s
+#define PATTERN_SWITCH_TIME   60000 // 60s
 
-#define LIGHT_COUNT           4
+#define LIGHT_COUNT           8
 
 #define LIGHT_CHANNEL_DIMMER  0
 #define LIGHT_CHANNEL_STROBE  7
+#define BASIC_LIGHT_CHANNEL_STROBE 5
 
 #define LIGHT_CHANNEL_RED     1
 #define LIGHT_CHANNEL_GREEN   2
@@ -51,9 +52,14 @@
 #define LIGHT_CHANNEL_SPACING 10
 #define LIGHT_FIRST_CHANNEL   1
 
-#define LIGHT_LAST_CHANNEL    (LIGHT_COUNT * LIGHT_CHANNEL_SPACING) + LIGHT_FIRST_CHANNEL + LIGHT_CHANNEL_STROBE
-#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
+#define FOUR_COLOR_LIGHTS     0b01100110 // bitmask for small par lights with only four color channels
 
+#define LIGHT_LAST_CHANNEL    (LIGHT_COUNT * LIGHT_CHANNEL_SPACING) + LIGHT_FIRST_CHANNEL + LIGHT_CHANNEL_STROBE
+
+#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
+#define CHECK_BIT(var,pos) ((var) & (1<<(pos)))
+
+uint64_t basic_light_mask = FOUR_COLOR_LIGHTS;
 
 uint32_t last_beat = 0;
 uint16_t beat_duration = 500; // 2bps ^= 120bpm
@@ -141,30 +147,33 @@ void sendDmx() {
 void write_dmx_frame(CRGB* lights) {
   for (uint8_t i = 0; i < LIGHT_COUNT; i ++) {
     uint8_t start_channel = (i * LIGHT_CHANNEL_SPACING) + LIGHT_FIRST_CHANNEL;
+    bool isBasicLight = CHECK_BIT(basic_light_mask, i);
 
     uint8_t r, g, b, w, a, u;
     crgb_to_rgbwau(lights[i], &r, &g, &b, &w, &a, &u);
 
     setDmx(start_channel + LIGHT_CHANNEL_DIMMER, (g_blackout) ? 0 : ((g_strobe) ? 255 : g_dimmer));
-    setDmx(start_channel + LIGHT_CHANNEL_STROBE, g_strobe);
+    setDmx(start_channel + ((isBasicLight) ? BASIC_LIGHT_CHANNEL_STROBE : LIGHT_CHANNEL_STROBE), g_strobe);
 
     setDmx(start_channel + LIGHT_CHANNEL_RED, (g_strobe) ? 255 : r);
     setDmx(start_channel + LIGHT_CHANNEL_GREEN, (g_strobe) ? 255 : g);
     setDmx(start_channel + LIGHT_CHANNEL_BLUE, (g_strobe) ? 255 : b);
     setDmx(start_channel + LIGHT_CHANNEL_WHITE, (g_strobe) ? 255 : w);
-    setDmx(start_channel + LIGHT_CHANNEL_AMBER, (g_strobe) ? 255 : a);
-    setDmx(start_channel + LIGHT_CHANNEL_UV, (g_strobe) ? 255 : u);
+    if (!isBasicLight) {
+      setDmx(start_channel + LIGHT_CHANNEL_AMBER, (g_strobe) ? 255 : a);
+      setDmx(start_channel + LIGHT_CHANNEL_UV, (g_strobe) ? 255 : u);
+    }
 
     if (UV_DURING_BEAT_PAUSE && g_beat_paused) {
       setDmx(start_channel + LIGHT_CHANNEL_DIMMER, (g_strobe) ? 255 : g_dimmer);
-      setDmx(start_channel + LIGHT_CHANNEL_STROBE, g_strobe);
+      setDmx(start_channel + ((isBasicLight) ? BASIC_LIGHT_CHANNEL_STROBE : LIGHT_CHANNEL_STROBE), g_strobe);
 
       setDmx(start_channel + LIGHT_CHANNEL_RED, 0);
       setDmx(start_channel + LIGHT_CHANNEL_GREEN, 0);
-      setDmx(start_channel + LIGHT_CHANNEL_BLUE, 0);
+      setDmx(start_channel + LIGHT_CHANNEL_BLUE, (isBasicLight) ? 16 : 0);
       setDmx(start_channel + LIGHT_CHANNEL_WHITE, 0);
       setDmx(start_channel + LIGHT_CHANNEL_AMBER, 0);
-      setDmx(start_channel + LIGHT_CHANNEL_UV, 255);
+      setDmx(start_channel + LIGHT_CHANNEL_UV, (isBasicLight) ? 0 : 255);
     }
   }
 
