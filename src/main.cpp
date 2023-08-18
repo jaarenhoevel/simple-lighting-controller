@@ -18,7 +18,7 @@
 
 #define UV_DURING_BEAT_PAUSE  true
 
-#define ESP_NOW_ENABLED       false
+#define ESP_NOW_ENABLED       true
 
 #define STROBE_PIN            D0
 
@@ -72,6 +72,7 @@ uint32_t last_taps[BEAT_TAPS];
 uint8_t g_dimmer = 255;
 uint8_t g_strobe = 0;
 uint8_t g_hue = 0;
+uint8_t g_slow_hue = 127;
 
 uint8_t g_static_effect = false;
 uint8_t g_effect_rotation = true;
@@ -79,7 +80,8 @@ uint8_t g_blackout = false;
 uint8_t g_beat_paused = false;
 
 CRGB lights[LIGHT_COUNT];
-CRGB base_color = CRGB::Red;
+CRGB g_base_color = CRGB::Red;
+uint8_t g_base_color_hue = 0;
 
 DMXESPSerial dmx;
 
@@ -94,9 +96,10 @@ void confetti();
 void chase();
 void blinder();
 void wave();
+void big_n_little();
 
 typedef void (*SimplePatternList[])();
-SimplePatternList g_patterns_sync = {confetti, sinelon, chase, blinder, wave};
+SimplePatternList g_patterns_sync = {confetti, sinelon, chase, blinder, wave, big_n_little};
 SimplePatternList g_patterns_static = {rainbow, juggle};
 
 uint8_t g_current_sync_pattern = 0;
@@ -109,7 +112,8 @@ uint32_t g_effect_var_a, g_effect_var_b, g_effect_var_c = 0;
 
 void next_pattern() {
   // New random color...
-  base_color = CHSV(random8(255), 255, 255);
+  g_base_color_hue = random8(255);
+  g_base_color = CHSV(g_base_color_hue, 255, 255);
   
   // add one to the current pattern number, and wrap around at the end
   g_current_sync_pattern = (g_current_sync_pattern + 1) % ARRAY_SIZE( g_patterns_sync);
@@ -321,6 +325,7 @@ void loop() {
   }
 
   g_hue += 2;
+  g_slow_hue += 1;
 
   if (g_static_effect) {
     g_patterns_static[g_current_static_pattern]();
@@ -336,7 +341,7 @@ void loop() {
 // EFFECT SECTION //
 
 void rainbow() {
-  fill_rainbow(lights, LIGHT_COUNT, g_hue, 15);
+  fill_rainbow(lights, LIGHT_COUNT, g_slow_hue, 20);
 }
 
 void confetti() {
@@ -344,7 +349,7 @@ void confetti() {
 
   if (g_beat_due) {
     int pos = random16(LIGHT_COUNT);
-    lights[pos] += CHSV( g_hue + random8(64), 255, 255);
+    lights[pos] += CHSV( g_slow_hue + random8(64), 255, 255);
     return;
   }
 
@@ -353,7 +358,7 @@ void confetti() {
 
 void sinelon() {
   // a colored dot sweeping back and forth, with fading trails
-  fadeToBlackBy(lights, LIGHT_COUNT, 20);
+  fadeToBlackBy(lights, LIGHT_COUNT, 40);
   int pos = beatsin16( g_bpm, 0, LIGHT_COUNT-1, last_taps[0] );
   lights[pos] += CHSV( g_hue, 255, 192);
 }
@@ -363,7 +368,7 @@ void juggle() {
   fadeToBlackBy( lights, LIGHT_COUNT, 20);
   byte dothue = 0;
   for( int i = 0; i < 2; i++) {
-    lights[beatsin16( i+7, 0, LIGHT_COUNT-1 )] |= CHSV(dothue, 200, 255);
+    lights[beatsin16( i+7, 0, LIGHT_COUNT-1 )] |= CHSV(dothue, 255, 255);
     dothue += 32;
   }
 }
@@ -393,7 +398,19 @@ void blinder() {
 
 void wave() {
   for (uint8_t i = 0; i < LIGHT_COUNT; i ++ ) {
-    CRGB color = base_color;
+    CRGB color = g_base_color;
     lights[i] = color.fadeToBlackBy(beatsin8(g_bpm, 0, 255, last_taps[0], (255 / (LIGHT_COUNT + 1)) * i));
+  }
+}
+
+void big_n_little() {
+  CRGB big_color = CHSV(g_slow_hue, 255, 255);
+  CRGB little_color = CHSV(g_slow_hue + 127, 255, 255); // Create opposing color
+  
+  for (uint8_t i = 0; i < LIGHT_COUNT; i ++) {
+    bool is_little = CHECK_BIT(basic_light_mask, i);
+    CRGB color = ((is_little) ? little_color : big_color);
+
+    lights[i] = color.fadeToBlackBy(beatsin8(g_bpm, 0, 255, last_taps[0], (255 / (LIGHT_COUNT + 1)) * ((is_little) ? ((LIGHT_COUNT - 1) - i) : i)));
   }
 }
