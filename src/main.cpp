@@ -96,10 +96,11 @@ void confetti();
 void chase();
 void blinder();
 void wave();
-void big_n_little();
+void wave_big_little();
+void impulse_big_little();
 
 typedef void (*SimplePatternList[])();
-SimplePatternList g_patterns_sync = {confetti, sinelon, chase, blinder, wave, big_n_little};
+SimplePatternList g_patterns_sync = {confetti, sinelon, chase, blinder, wave, wave_big_little, impulse_big_little};
 SimplePatternList g_patterns_static = {rainbow, juggle};
 
 uint8_t g_current_sync_pattern = 0;
@@ -403,7 +404,7 @@ void wave() {
   }
 }
 
-void big_n_little() {
+void wave_big_little() {
   CRGB big_color = CHSV(g_slow_hue, 255, 255);
   CRGB little_color = CHSV(g_slow_hue + 127, 255, 255); // Create opposing color
   
@@ -413,4 +414,18 @@ void big_n_little() {
 
     lights[i] = color.fadeToBlackBy(beatsin8(g_bpm, 0, 255, last_taps[0], (255 / (LIGHT_COUNT + 1)) * ((is_little) ? ((LIGHT_COUNT - 1) - i) : i)));
   }
+}
+
+void impulse_big_little() {
+  if (g_beat_due) {
+    for (uint8_t i = 0; i < LIGHT_COUNT; i++) {
+      bool is_little = CHECK_BIT(basic_light_mask, i);
+
+      if (is_little == g_effect_var_a) lights[i] = CRGB::White;
+    }
+    g_effect_var_a = (g_effect_var_a == 0) ? 1 : 0;
+    return;
+  }
+  
+  fadeUsingColor(lights, LIGHT_COUNT, CHSV(g_slow_hue, 79, 239));
 }
